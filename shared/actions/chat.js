@@ -942,32 +942,15 @@ function * _incomingMessage (action: IncomingMessage): SagaGenerator<any, any> {
             }
           }
 
-          let existingMessage
-          if (message.messageID) {
-            existingMessage = yield select(_messageSelector, conversationIDKey, message.messageID)
-          }
-
-          // If we already have an existing message (say for an attachment, let's reuse that)
-          if (existingMessage && existingMessage.outboxID && message.type === 'Attachment') {
-            yield put(({
-              type: 'chat:updateTempMessage',
-              payload: {
-                conversationIDKey,
-                outboxID: existingMessage.outboxID,
-                message,
-              },
-            }: Constants.UpdateTempMessage))
-          } else {
-            yield put({
-              logTransformer: appendMessageActionTransformer,
-              payload: {
-                conversationIDKey,
-                isSelected: conversationIDKey === selectedConversationIDKey,
-                messages: [message],
-              },
-              type: 'chat:appendMessages',
-            })
-          }
+          yield put({
+            logTransformer: appendMessageActionTransformer,
+            payload: {
+              conversationIDKey,
+              isSelected: conversationIDKey === selectedConversationIDKey,
+              messages: [message],
+            },
+            type: 'chat:appendMessages',
+          })
 
           if ((message.type === 'Attachment' || message.type === 'UpdateAttachment') && !message.previewPath && message.messageID) {
             const messageID = message.type === 'UpdateAttachment' ? message.targetMessageID : message.messageID
@@ -1427,23 +1410,13 @@ function _unboxedToMessage (message: MessageUnboxed, yourName, yourDeviceName, c
           const attachment: ChatTypes.MessageAttachment = payload.messageBody.attachment
           const preview = attachment && attachment.preview
           const mimeType = preview && preview.mimeType
+
           const previewMetadata = preview && preview.metadata
           const previewSize = previewMetadata && Constants.parseMetadataPreviewSize(previewMetadata)
-
-          const previewIsVideo = previewMetadata && previewMetadata.assetType === LocalAssetMetadataType.video
-          let previewDurationMs = null
-          if (previewIsVideo) {
-            const previewVideoMetadata = previewMetadata && previewMetadata.assetType === LocalAssetMetadataType.video && previewMetadata.video
-            previewDurationMs = previewVideoMetadata ? previewVideoMetadata.durationMs : null
-          }
+          const previewDurationMs = Constants.getAssetDuration(previewMetadata)
 
           const objectMetadata = attachment && attachment.object && attachment.object.metadata
-          const objectIsVideo = objectMetadata && objectMetadata.assetType === LocalAssetMetadataType.video
-          let attachmentDurationMs = null
-          if (objectIsVideo) {
-            const objectVideoMetadata = objectMetadata && objectMetadata.assetType === LocalAssetMetadataType.video && objectMetadata.video
-            attachmentDurationMs = objectVideoMetadata ? objectVideoMetadata.durationMs : null
-          }
+          const attachmentDurationMs = Constants.getAssetDuration(objectMetadata)
 
           let messageState
           if (attachment.uploaded) {
@@ -1476,7 +1449,13 @@ function _unboxedToMessage (message: MessageUnboxed, yourName, yourDeviceName, c
           const previews = attachmentUploaded && attachmentUploaded.previews
           const preview = previews && previews[0]
           const mimeType = preview && preview.mimeType
-          const previewSize = preview && preview.metadata && Constants.parseMetadataPreviewSize(preview.metadata)
+
+          const previewMetadata = preview && preview.metadata
+          const previewSize = previewMetadata && Constants.parseMetadataPreviewSize(previewMetadata)
+          const previewDurationMs = Constants.getAssetDuration(previewMetadata)
+
+          const objectMetadata = attachmentUploaded && attachmentUploaded.object && attachmentUploaded.object.metadata
+          const attachmentDurationMs = Constants.getAssetDuration(objectMetadata)
 
           return {
             key: Constants.messageKey('messageID', common.messageID),
@@ -1485,10 +1464,12 @@ function _unboxedToMessage (message: MessageUnboxed, yourName, yourDeviceName, c
             timestamp: common.timestamp,
             type: 'UpdateAttachment',
             updates: {
+              attachmentDurationMs,
               filename: attachmentUploaded.object.filename,
               messageState: 'sent',
               previewType: mimeType && mimeType.indexOf('image') === 0 ? 'Image' : 'Other',
               previewSize,
+              previewDurationMs,
               title: attachmentUploaded.object.title,
             },
           }
@@ -1767,7 +1748,18 @@ function * _badgeAppForChat (action: BadgeAppForChat): SagaGenerator<any, any> {
   })
 }
 
-function * _selectAttachment ({payload: {conversationIDKey, filename, title, type}}: Constants.SelectAttachment): SagaGenerator<any, any> {
+function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): SagaGenerator<any, any> {
+  const {title, filename, type} = input
+  let {conversationIDKey} = input
+
+  if (isPendingConversationIDKey(conversationIDKey)) {
+    // Get a real conversationIDKey
+    conversationIDKey = yield call(_startNewConversation, conversationIDKey)
+    if (!conversationIDKey) {
+      return
+    }
+  }
+
   const clientHeader = yield call(_clientHeader, CommonMessageType.attachment, conversationIDKey)
   const attachment = {
     filename,

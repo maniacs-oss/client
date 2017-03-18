@@ -166,10 +166,12 @@ export type UpdatingAttachment = {
   targetMessageID: MessageID,
   timestamp: number,
   updates: {
+    attachmentDurationMs: ?number,
     filename: ?string,
     messageState: 'sent',
     previewType: ?AttachmentType,
     previewSize: ?AttachmentSize,
+    previewDurationMs: ?number,
     title: ?string,
   },
 }
@@ -405,11 +407,6 @@ export type UpdateTempMessage = TypedAction<'chat:updateTempMessage', {
   error: Error,
 }>
 
-export type DeleteTempMessage = NoErrorTypedAction<'chat:deleteTempMessage', {
-  conversationIDKey: ConversationIDKey,
-  outboxID: OutboxIDKey,
-}>
-
 export type MarkSeenMessage = NoErrorTypedAction<'chat:markSeenMessage', {
   conversationIDKey: ConversationIDKey,
   messageID: MessageID,
@@ -546,6 +543,16 @@ function parseMetadataPreviewSize (metadata: AssetMetadata): ?AttachmentSize {
   }
 }
 
+function getAssetDuration(assetMetadata: ?AssetMetadata): ?number {
+   const assetIsVideo = assetMetadata && assetMetadata.assetType === ChatTypes.LocalAssetMetadataType.video
+   if (assetIsVideo) {
+     const assetVideoMetadata = assetMetadata && assetMetadata.assetType === ChatTypes.LocalAssetMetadataType.video && assetMetadata.video
+     return assetVideoMetadata ? assetVideoMetadata.durationMs : null
+   }
+   return null
+}
+
+
 function pendingConversationIDKey (tlfName: string) {
   return `PendingConversation:${tlfName}`
 }
@@ -617,4 +624,5 @@ export {
   pendingConversationIDKey,
   isPendingConversationIDKey,
   pendingConversationIDKeyToTlfName,
+  getAssetDuration,
 }

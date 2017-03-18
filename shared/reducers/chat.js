@@ -191,16 +191,6 @@ function reducer (state: State = initialState, action: Actions) {
       return state
         .set('conversationStates', newConversationStates)
     }
-    case 'chat:deleteTempMessage': {
-      const {conversationIDKey, outboxID} = action.payload
-      // $FlowIssue
-      return state.update('conversationStates', conversationStates => updateConversation(
-        conversationStates,
-        conversationIDKey,
-        // $FlowIssue
-        conv => conv.update('messages', messages => messages.filter(m => m.outboxID !== outboxID))
-      ))
-    }
     case 'chat:updateTempMessage': {
       if (action.error) {
         console.warn('Error in updateTempMessage')
