@@ -1767,58 +1767,7 @@ function * _badgeAppForChat (action: BadgeAppForChat): SagaGenerator<any, any> {
   })
 }
 
-const _temporaryAttachmentMessageForUpload = (convID: ConversationIDKey, username: string, title: string, filename: string, outboxID: Constants.OutboxIDKey, previewType: $PropertyType<Constants.AttachmentMessage, 'previewType'>, previewSize: $PropertyType<Constants.AttachmentMessage, 'previewSize'>) => ({
-  type: 'Attachment',
-  timestamp: Date.now(),
-  conversationIDKey: convID,
-  followState: 'You',
-  author: username,
-  // TODO we should be able to fill this in
-  deviceName: '',
-  deviceType: isMobile ? 'mobile' : 'desktop',
-  filename,
-  title,
-  previewType,
-  previewSize,
-  previewPath: filename,
-  downloadedPath: null,
-  outboxID,
-  progress: 0,
-  messageState: 'uploading',
-  key: Constants.messageKey('tempAttachment', outboxID),
-})
-
-function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): SagaGenerator<any, any> {
-  const {title, filename, type} = input
-  let {conversationIDKey} = input
-
-  if (isPendingConversationIDKey(conversationIDKey)) {
-    // Get a real conversationIDKey
-    conversationIDKey = yield call(_startNewConversation, conversationIDKey)
-    if (!conversationIDKey) {
-      return
-    }
-  }
-
-  const outboxID = `attachmentUpload-${Math.ceil(Math.random() * 1e9)}`
-  const username = yield select(usernameSelector)
-
-  yield put({
-    logTransformer: appendMessageActionTransformer,
-    payload: {
-      conversationIDKey,
-      messages: [_temporaryAttachmentMessageForUpload(
-        conversationIDKey,
-        username,
-        title,
-        filename,
-        outboxID,
-        type,
-      )],
-    },
-    type: 'chat:appendMessages',
-  })
-
+function * _selectAttachment ({payload: {conversationIDKey, filename, title, type}}: Constants.SelectAttachment): SagaGenerator<any, any> {
   const clientHeader = yield call(_clientHeader, CommonMessageType.attachment, conversationIDKey)
   const attachment = {
     filename,
@@ -1845,15 +1794,27 @@ function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): S
 
   const uploadStart = yield takeFromChannelMap(channelMap, 'chat.1.chatUi.chatAttachmentUploadStart')
   uploadStart.response.result()
+  const messageID = uploadStart.params.placeholderMsgID
+  yield put(({
+    type: 'chat:updateMessage',
+    payload: {
+      conversationIDKey,
+      messageID,
+      message: {previewType: type, previewPath: filename},
+    },
+  }: Constants.UpdateMessage))
 
   const finishedTask = yield fork(function * () {
     const finished = yield takeFromChannelMap(channelMap, 'finished')
     if (finished.error) {
-      yield put(updateTempMessage(
-        conversationIDKey,
-        {messageState: 'failed'},
-        outboxID
-      ))
+      yield put(({
+        type: 'chat:updateMessage',
+        payload: {
+          conversationIDKey,
+          messageID,
+          message: {messageState: 'failed'},
+        },
+      }: Constants.UpdateMessage))
     }
     return finished
   })
@@ -1862,7 +1823,7 @@ function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): S
     const {bytesComplete, bytesTotal} = response.param
     const action: Constants.UploadProgress = {
       type: 'chat:uploadProgress',
-      payload: {bytesTotal, bytesComplete, conversationIDKey, outboxID},
+      payload: {bytesTotal, bytesComplete, conversationIDKey, messageID},
     }
     yield put(action)
     response.result()
@@ -1873,24 +1834,17 @@ function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): S
     previewUploadStart.response.result()
 
     const metadata = previewUploadStart.params && previewUploadStart.params.metadata
-    const previewSize = metadata && Constants.parseMetadataPreviewSize(metadata) || null
-
-    yield put({
-      logTransformer: appendMessageActionTransformer,
-      payload: {
-        conversationIDKey,
-        messages: [_temporaryAttachmentMessageForUpload(
+    const previewSize = metadata && Constants.parseMetadataPreviewSize(metadata)
+    if (previewSize) {
+      yield put(({
+        type: 'chat:updateMessage',
+        payload: {
           conversationIDKey,
-          username,
-          title,
-          filename,
-          outboxID,
-          type,
-          previewSize,
-        )],
-      },
-      type: 'chat:appendMessages',
-    })
+          messageID,
+          message: {previewSize},
+        },
+      }: Constants.UpdateMessage))
+    }
 
     const previewUploadDone = yield takeFromChannelMap(channelMap, 'chat.1.chatUi.chatAttachmentPreviewUploadDone')
     previewUploadDone.response.result()
@@ -1899,39 +1853,12 @@ function * _selectAttachment ({payload: {input}}: Constants.SelectAttachment): S
   const uploadDone = yield takeFromChannelMap(channelMap, 'chat.1.chatUi.chatAttachmentUploadDone')
   uploadDone.response.result()
 
-  const finished = yield join(finishedTask)
+  yield join(finishedTask)
   yield cancel(progressTask)
   yield cancel(previewTask)
   closeChannelMap(channelMap)
 
-  if (!finished.error) {
-    const {params: {messageID}} = finished
-    const existingMessage = yield select(_messageSelector, conversationIDKey, messageID)
-    // We already received a message for this attachment
-    if (existingMessage) {
-      yield put(({
-        type: 'chat:deleteTempMessage',
-        payload: {
-          conversationIDKey,
-          outboxID,
-        },
-      }: Constants.DeleteTempMessage))
-    } else {
-      yield put(updateTempMessage(
-        conversationIDKey,
-        {type: 'Attachment', messageState: 'sent', messageID, key: Constants.messageKey('messageID', messageID)},
-        outboxID,
-      ))
-    }
-
-    yield put(({
-      type: 'chat:markSeenMessage',
-      payload: {
-        conversationIDKey,
-        messageID: messageID,
-      },
-    }: Constants.MarkSeenMessage))
-  }
+  return messageID
 }
 
 // Instead of redownloading the full attachment again, we may have it cached from an earlier hdPreview

@@ -369,7 +369,7 @@ export type UpdatedMetadata = NoErrorTypedAction<'chat:updatedMetadata', {[key: 
 export type SelectAttachment = NoErrorTypedAction<'chat:selectAttachment', {input: AttachmentInput}>
 export type UpdateBrokenTracker = NoErrorTypedAction<'chat:updateBrokenTracker', {userToBroken: {[username: string]: boolean}}>
 export type UploadProgress = NoErrorTypedAction<'chat:uploadProgress', {
-  outboxID: OutboxIDKey,
+  messageID: MessageID,
   bytesComplete: number,
   bytesTotal: number,
   conversationIDKey: ConversationIDKey,
