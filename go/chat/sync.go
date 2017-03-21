@@ -49,10 +49,8 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	}
 
 	// Grab current on disk version
-	ibox := storage.NewInbox(s.G(), uid, func() libkb.SecretUI {
-		return DelivererSecretUI{}
-	})
-	var syncRes chat1.SyncInboxRes
+	ibox := storage.NewInbox(s.G(), uid, nil)
+	var syncRes chat1.SyncChatRes
 	vers, err := ibox.Version(ctx)
 	if err != nil {
 		s.Debug(ctx, "Connected: failed to get current inbox version (using 0): %s", err.Error())
@@ -61,13 +59,13 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	s.Debug(ctx, "Connected: current inbox version: %v", vers)
 
 	// Run the sync call on the server to see how current our local copy is
-	if syncRes, err = cli.SyncInbox(ctx, vers); err != nil {
+	if syncRes, err = cli.SyncChat(ctx, vers); err != nil {
 		s.Debug(ctx, "Connected: failed to sync inbox: %s", err.Error())
 		return err
 	}
 
 	// Process what the server has told us to do with the local inbox copy
-	rtyp, err := syncRes.Typ()
+	rtyp, err := syncRes.InboxRes.Typ()
 	if err != nil {
 		s.Debug(ctx, "Connected: strange type from SyncInbox: %s", err.Error())
 		return err
@@ -83,7 +81,7 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	case chat1.SyncInboxResType_CURRENT:
 		s.Debug(ctx, "Connected: version is current, standing pat: %v", vers)
 	case chat1.SyncInboxResType_INCREMENTAL:
-		incr := syncRes.Incremental()
+		incr := syncRes.InboxRes.Incremental()
 		s.Debug(ctx, "Connected: version out of date, but can incrementally sync: old vers: %v vers: %v convs: %d",
 			vers, incr.Vers, len(incr.Convs))
 

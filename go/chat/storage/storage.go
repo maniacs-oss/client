@@ -33,19 +33,18 @@ type Storage struct {
 }
 
 type storageEngine interface {
-	init(ctx context.Context, key [32]byte, convID chat1.ConversationID,
+	Init(ctx context.Context, key [32]byte, convID chat1.ConversationID,
 		uid gregor1.UID) (context.Context, Error)
-	writeMessages(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
+	WriteMessages(ctx context.Context, convID chat1.ConversationID, uid gregor1.UID,
 		msgs []chat1.MessageUnboxed) Error
-	readMessages(ctx context.Context, res resultCollector,
+	ReadMessages(ctx context.Context, res resultCollector,
 		convID chat1.ConversationID, uid gregor1.UID, maxID chat1.MessageID) Error
 }
 
-func New(g *libkb.GlobalContext, getSecretUI func() libkb.SecretUI) *Storage {
+func New(g *libkb.GlobalContext) *Storage {
 	return &Storage{
 		Contextified: libkb.NewContextified(g),
-		getSecretUI:  getSecretUI,
-		engine:       newBlockEngine(g),
+		engine:       newBlockEngine(g, NewServerVersions(g)),
 		idtracker:    newMsgIDTracker(g),
 		breakTracker: newBreakTracker(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Storage", false),
@@ -211,13 +210,13 @@ func (s *Storage) Merge(ctx context.Context, convID chat1.ConversationID, uid gr
 		return MiscError{Msg: "unable to get secret key: " + ierr.Error()}
 	}
 
-	ctx, err = s.engine.init(ctx, key, convID, uid)
+	ctx, err = s.engine.Init(ctx, key, convID, uid)
 	if err != nil {
 		return err
 	}
 
 	// Write out new data into blocks
-	if err = s.engine.writeMessages(ctx, convID, uid, msgs); err != nil {
+	if err = s.engine.WriteMessages(ctx, convID, uid, msgs); err != nil {
 		return s.MaybeNuke(false, err, convID, uid)
 	}
 
@@ -263,7 +262,7 @@ func (s *Storage) updateAllSupersededBy(ctx context.Context, convID chat1.Conver
 			// Read super msg
 			var superMsgs []chat1.MessageUnboxed
 			rc := newSimpleResultCollector(1)
-			err := s.engine.readMessages(ctx, rc, convID, uid, superID)
+			err := s.engine.ReadMessages(ctx, rc, convID, uid, superID)
 			if err != nil {
 				// If we don't have the message, just keep going
 				if _, ok := err.(MissError); ok {
@@ -288,7 +287,7 @@ func (s *Storage) updateAllSupersededBy(ctx context.Context, convID chat1.Conver
 					mvalid.MessageBody = emptyBody
 				}
 				superMsgs[0] = chat1.NewMessageUnboxedWithValid(mvalid)
-				if err = s.engine.writeMessages(ctx, convID, uid, superMsgs); err != nil {
+				if err = s.engine.WriteMessages(ctx, convID, uid, superMsgs); err != nil {
 					return err
 				}
 			} else {
@@ -312,7 +311,7 @@ func (s *Storage) fetchUpToMsgIDLocked(ctx context.Context, convID chat1.Convers
 
 	// Init storage engine first
 	var err Error
-	ctx, err = s.engine.init(ctx, key, convID, uid)
+	ctx, err = s.engine.Init(ctx, key, convID, uid)
 	if err != nil {
 		return chat1.ThreadView{}, s.MaybeNuke(false, err, convID, uid)
 	}
@@ -356,7 +355,7 @@ func (s *Storage) fetchUpToMsgIDLocked(ctx context.Context, convID chat1.Convers
 
 	// Run seek looking for all the messages
 	var res []chat1.MessageUnboxed
-	if err = s.engine.readMessages(ctx, rc, convID, uid, maxID); err != nil {
+	if err = s.engine.ReadMessages(ctx, rc, convID, uid, maxID); err != nil {
 		return chat1.ThreadView{}, err
 	}
 	res = rc.result()
@@ -414,7 +413,7 @@ func (s *Storage) FetchMessages(ctx context.Context, convID chat1.ConversationID
 
 	// Init storage engine first
 	var err Error
-	ctx, err = s.engine.init(ctx, key, convID, uid)
+	ctx, err = s.engine.Init(ctx, key, convID, uid)
 	if err != nil {
 		return nil, s.MaybeNuke(false, err, convID, uid)
 	}
@@ -424,7 +423,7 @@ func (s *Storage) FetchMessages(ctx context.Context, convID chat1.ConversationID
 	for _, msgID := range msgIDs {
 		rc := newSimpleResultCollector(1)
 		var sres []chat1.MessageUnboxed
-		if err = s.engine.readMessages(ctx, rc, convID, uid, msgID); err != nil {
+		if err = s.engine.ReadMessages(ctx, rc, convID, uid, msgID); err != nil {
 			if _, ok := err.(MissError); ok {
 				res = append(res, nil)
 				continue

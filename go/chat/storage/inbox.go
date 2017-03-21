@@ -21,7 +21,7 @@ import (
 	"github.com/keybase/client/go/protocol/gregor1"
 )
 
-const inboxVersion = 8
+const inboxVersion = 9
 
 type queryHash []byte
 
@@ -68,6 +68,7 @@ func (q inboxDiskQuery) match(other inboxDiskQuery) bool {
 
 type inboxDiskData struct {
 	Version       int                  `codec:"V"`
+	ServerVersion int                  `codec:"S"`
 	InboxVersion  chat1.InboxVers      `codec:"I"`
 	Conversations []chat1.Conversation `codec:"C"`
 	Queries       []inboxDiskQuery     `codec:"Q"`
@@ -78,15 +79,20 @@ type Inbox struct {
 	*baseBox
 	utils.DebugLabeler
 
-	uid gregor1.UID
+	srvVers *ServerVersions
+	uid     gregor1.UID
 }
 
-func NewInbox(g *libkb.GlobalContext, uid gregor1.UID, getSecretUI func() libkb.SecretUI) *Inbox {
+func NewInbox(g *libkb.GlobalContext, uid gregor1.UID, srvVers *ServerVersions) *Inbox {
+	if srvVers == nil {
+		srvVers = NewServerVersions(g)
+	}
 	return &Inbox{
 		Contextified: libkb.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Inbox", false),
-		baseBox:      newBaseBox(g, getSecretUI),
+		baseBox:      newBaseBox(g),
 		uid:          uid,
+		srvVers:      srvVers,
 	}
 }
 
@@ -107,6 +113,8 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 	if !found {
 		return ibox, MissError{}
 	}
+
+	// Check on disk version against configured
 	if ibox.Version != inboxVersion {
 		i.Debug(ctx, "on disk version not equal to program version, clearing: disk :%d program: %d",
 			ibox.Version, inboxVersion)
@@ -115,11 +123,26 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 		}
 		return inboxDiskData{Version: inboxVersion}, nil
 	}
+	// Check on disk server version against known server version
+	if err := i.srvVers.MatchInbox(ctx, ibox.ServerVersion); err != nil {
+		i.Debug(ctx, "server version match error, clearing: %s", err.Error())
+		if cerr := i.Clear(ctx); cerr != nil {
+			return ibox, cerr
+		}
+		return inboxDiskData{Version: inboxVersion}, nil
+	}
+
 	return ibox, nil
 }
 
 func (i *Inbox) writeDiskInbox(ctx context.Context, ibox inboxDiskData) Error {
+	srvVers, err := i.srvVers.Fetch(ctx)
+	if err != nil {
+		return err
+	}
+
 	ibox.Version = inboxVersion
+	ibox.ServerVersion = srvVers.InboxVers
 	if ierr := i.writeDiskBox(ctx, i.dbKey(), ibox); ierr != nil {
 		return NewInternalError(ctx, i.DebugLabeler, "failed to write inbox: uid: %s err: %s",
 			i.uid, ierr.Error())
