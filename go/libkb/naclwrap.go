@@ -14,7 +14,7 @@ import (
 
 	keybase1 "github.com/keybase/client/go/protocol/keybase1"
 	"github.com/keybase/go-crypto/ed25519"
-	"golang.org/x/crypto/hkdf"
+	"github.com/keybase/go-crypto/hkdf"
 	"golang.org/x/crypto/nacl/box"
 )
 
