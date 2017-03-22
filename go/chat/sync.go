@@ -17,12 +17,14 @@ type Syncer struct {
 	utils.DebugLabeler
 
 	offlinables []types.Offlinable
+	srvVers     *storage.ServerVersions
 }
 
 func NewSyncer(g *libkb.GlobalContext) *Syncer {
 	return &Syncer{
 		Contextified: libkb.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Syncer", false),
+		srvVers:      storage.NewServerVersions(g),
 	}
 }
 
@@ -62,6 +64,11 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	if syncRes, err = cli.SyncChat(ctx, vers); err != nil {
 		s.Debug(ctx, "Connected: failed to sync inbox: %s", err.Error())
 		return err
+	}
+
+	// Set new server versions
+	if err := s.srvVers.Sync(ctx, syncRes.CacheVers); err != nil {
+		s.Debug(ctx, "Connected: failed to set new server versions: %s", err.Error())
 	}
 
 	// Process what the server has told us to do with the local inbox copy
