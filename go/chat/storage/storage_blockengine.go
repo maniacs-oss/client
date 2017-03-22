@@ -17,15 +17,12 @@ const blockSize = 100
 type blockEngine struct {
 	libkb.Contextified
 	utils.DebugLabeler
-
-	srvVers *ServerVersions
 }
 
-func newBlockEngine(g *libkb.GlobalContext, srvVers *ServerVersions) *blockEngine {
+func newBlockEngine(g *libkb.GlobalContext) *blockEngine {
 	return &blockEngine{
 		Contextified: libkb.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "BlockEngine", true),
-		srvVers:      srvVers,
 	}
 }
 
@@ -74,10 +71,10 @@ func (be *blockEngine) createBlockIndex(ctx context.Context, key libkb.DbKey,
 	be.Debug(ctx, "createBlockIndex: creating new block index: convID: %d uid: %s", convID, uid)
 
 	// Grab latest server version to tag local data with
-	srvVers, err := be.srvVers.Fetch(ctx)
-	if err != nil {
-		be.Debug(ctx, "createBlockIndex: failed to get server versions: %s", err.Error())
-		return blockIndex{}, err
+	srvVers, serr := be.G().ServerCacheVersions.Fetch(ctx)
+	if serr != nil {
+		return blockIndex{},
+			NewInternalError(ctx, be.DebugLabeler, "createBlockIndex: failed to get server versions: %s", serr.Error())
 	}
 
 	bi := blockIndex{
@@ -89,6 +86,7 @@ func (be *blockEngine) createBlockIndex(ctx context.Context, key libkb.DbKey,
 		BlockSize:     blockSize,
 	}
 
+	var err Error
 	if _, err = be.createBlock(ctx, &bi, 0); err != nil {
 		return bi, NewInternalError(ctx, be.DebugLabeler, "createBlockIndex: failed to create block: %s", err.Message())
 	}
@@ -126,7 +124,7 @@ func (be *blockEngine) readBlockIndex(ctx context.Context, convID chat1.Conversa
 	}
 
 	// Check server version
-	if err = be.srvVers.MatchBodies(ctx, bi.ServerVersion); err != nil {
+	if _, err = be.G().ServerCacheVersions.MatchBodies(ctx, bi.ServerVersion); err != nil {
 		be.Debug(ctx, "readBlockInbox: server version error: %s, creating new index")
 		return be.createBlockIndex(ctx, key, convID, uid)
 	}

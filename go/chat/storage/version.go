@@ -1,12 +1,12 @@
 package storage
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/keybase/client/go/chat/utils"
 	"github.com/keybase/client/go/libkb"
 	"github.com/keybase/client/go/protocol/chat1"
+	context "golang.org/x/net/context"
 )
 
 type ServerVersions struct {
@@ -30,7 +30,7 @@ func (s *ServerVersions) makeKey() libkb.DbKey {
 	}
 }
 
-func (s *ServerVersions) fetchLocked(ctx context.Context) (chat1.ServerCacheVers, Error) {
+func (s *ServerVersions) fetchLocked(ctx context.Context) (chat1.ServerCacheVers, error) {
 	// Check in memory first
 	if s.cached != nil {
 		return *s.cached, nil
@@ -39,8 +39,8 @@ func (s *ServerVersions) fetchLocked(ctx context.Context) (chat1.ServerCacheVers
 	// Read from LevelDb
 	raw, found, err := s.G().LocalChatDb.GetRaw(s.makeKey())
 	if err != nil {
-		return chat1.ServerCacheVers{},
-			NewInternalError(ctx, s.DebugLabeler, "GetRaw error: %s", err.Error())
+		s.Debug(ctx, "fetchLocked: failed to read: %s", err.Error())
+		return chat1.ServerCacheVers{}, err
 	}
 	if !found {
 		s.Debug(ctx, "no server version found, using defaults")
@@ -48,8 +48,8 @@ func (s *ServerVersions) fetchLocked(ctx context.Context) (chat1.ServerCacheVers
 	}
 	var srvVers chat1.ServerCacheVers
 	if err = decode(raw, &srvVers); err != nil {
-		return chat1.ServerCacheVers{},
-			NewInternalError(ctx, s.DebugLabeler, "decode error: %s", err.Error())
+		s.Debug(ctx, "fetchLocked: failed to decode: %s", err.Error())
+		return chat1.ServerCacheVers{}, err
 	}
 
 	// Store in memory
@@ -57,7 +57,7 @@ func (s *ServerVersions) fetchLocked(ctx context.Context) (chat1.ServerCacheVers
 	return *s.cached, nil
 }
 
-func (s *ServerVersions) Fetch(ctx context.Context) (chat1.ServerCacheVers, Error) {
+func (s *ServerVersions) Fetch(ctx context.Context) (chat1.ServerCacheVers, error) {
 	locks.Version.Lock()
 	defer locks.Version.Unlock()
 
@@ -65,33 +65,33 @@ func (s *ServerVersions) Fetch(ctx context.Context) (chat1.ServerCacheVers, Erro
 }
 
 func (s *ServerVersions) matchLocked(ctx context.Context, vers int,
-	versFunc func(chat1.ServerCacheVers) int) Error {
+	versFunc func(chat1.ServerCacheVers) int) (int, error) {
 	srvVers, err := s.fetchLocked(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	retVers := versFunc(srvVers)
 	if retVers != vers {
-		return NewVersionMismatchError(chat1.InboxVers(vers), chat1.InboxVers(retVers))
+		return retVers, NewVersionMismatchError(chat1.InboxVers(vers), chat1.InboxVers(retVers))
 	}
-	return nil
+	return retVers, nil
 }
 
-func (s *ServerVersions) MatchInbox(ctx context.Context, vers int) Error {
+func (s *ServerVersions) MatchInbox(ctx context.Context, vers int) (int, error) {
 	locks.Version.Lock()
 	defer locks.Version.Unlock()
 
 	return s.matchLocked(ctx, vers, func(srvVers chat1.ServerCacheVers) int { return srvVers.InboxVers })
 }
 
-func (s *ServerVersions) MatchBodies(ctx context.Context, vers int) Error {
+func (s *ServerVersions) MatchBodies(ctx context.Context, vers int) (int, error) {
 	locks.Version.Lock()
 	defer locks.Version.Unlock()
 
 	return s.matchLocked(ctx, vers, func(srvVers chat1.ServerCacheVers) int { return srvVers.BodiesVers })
 }
 
-func (s *ServerVersions) Sync(ctx context.Context, vers chat1.ServerCacheVers) Error {
+func (s *ServerVersions) Sync(ctx context.Context, vers chat1.ServerCacheVers) error {
 	locks.Version.Lock()
 	defer locks.Version.Unlock()
 
@@ -101,10 +101,12 @@ func (s *ServerVersions) Sync(ctx context.Context, vers chat1.ServerCacheVers) E
 	// Write out to LevelDB
 	dat, err := encode(vers)
 	if err != nil {
-		return NewInternalError(ctx, s.DebugLabeler, "encode error: %s", err.Error())
+		s.Debug(ctx, "Sync: failed to encode: %s", err.Error())
+		return err
 	}
 	if err = s.G().LocalChatDb.PutRaw(s.makeKey(), dat); err != nil {
-		return NewInternalError(ctx, s.DebugLabeler, "PutRaw error: %s", err.Error())
+		s.Debug(ctx, "Sync: failed to write: %s", err.Error())
+		return err
 	}
 
 	return nil

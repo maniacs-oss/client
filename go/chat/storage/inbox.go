@@ -83,16 +83,12 @@ type Inbox struct {
 	uid     gregor1.UID
 }
 
-func NewInbox(g *libkb.GlobalContext, uid gregor1.UID, srvVers *ServerVersions) *Inbox {
-	if srvVers == nil {
-		srvVers = NewServerVersions(g)
-	}
+func NewInbox(g *libkb.GlobalContext, uid gregor1.UID) *Inbox {
 	return &Inbox{
 		Contextified: libkb.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Inbox", false),
 		baseBox:      newBaseBox(g),
 		uid:          uid,
-		srvVers:      srvVers,
 	}
 }
 
@@ -114,6 +110,18 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 		return ibox, MissError{}
 	}
 
+	// Check on disk server version against known server version
+	var srvVers int
+	if srvVers, err = i.srvVers.MatchInbox(ctx, ibox.ServerVersion); err != nil {
+		i.Debug(ctx, "server version match error, clearing: %s", err.Error())
+		if cerr := i.Clear(ctx); cerr != nil {
+			return ibox, cerr
+		}
+		return inboxDiskData{
+			Version:       inboxVersion,
+			ServerVersion: srvVers,
+		}, nil
+	}
 	// Check on disk version against configured
 	if ibox.Version != inboxVersion {
 		i.Debug(ctx, "on disk version not equal to program version, clearing: disk :%d program: %d",
@@ -121,28 +129,20 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 		if cerr := i.Clear(ctx); cerr != nil {
 			return ibox, cerr
 		}
-		return inboxDiskData{Version: inboxVersion}, nil
+		return inboxDiskData{
+			Version:       inboxVersion,
+			ServerVersion: srvVers,
+		}, nil
 	}
-	// Check on disk server version against known server version
-	if err := i.srvVers.MatchInbox(ctx, ibox.ServerVersion); err != nil {
-		i.Debug(ctx, "server version match error, clearing: %s", err.Error())
-		if cerr := i.Clear(ctx); cerr != nil {
-			return ibox, cerr
-		}
-		return inboxDiskData{Version: inboxVersion}, nil
-	}
+
+	// Set server version
+	ibox.ServerVersion = srvVers
 
 	return ibox, nil
 }
 
 func (i *Inbox) writeDiskInbox(ctx context.Context, ibox inboxDiskData) Error {
-	srvVers, err := i.srvVers.Fetch(ctx)
-	if err != nil {
-		return err
-	}
-
 	ibox.Version = inboxVersion
-	ibox.ServerVersion = srvVers.InboxVers
 	if ierr := i.writeDiskBox(ctx, i.dbKey(), ibox); ierr != nil {
 		return NewInternalError(ctx, i.DebugLabeler, "failed to write inbox: uid: %s err: %s",
 			i.uid, ierr.Error())

@@ -51,7 +51,7 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	}
 
 	// Grab current on disk version
-	ibox := storage.NewInbox(s.G(), uid, nil)
+	ibox := storage.NewInbox(s.G(), uid)
 	var syncRes chat1.SyncChatRes
 	vers, err := ibox.Version(ctx)
 	if err != nil {

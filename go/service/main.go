@@ -273,6 +273,8 @@ func (d *Service) createChatSources() {
 	d.G().ConvSource = chat.NewConversationSource(d.G(), d.G().Env.GetConvSourceType(),
 		boxer, storage.New(d.G()), ri)
 
+	d.G().ServerCacheVersions = storage.NewServerVersions(d.G())
+
 	// Add a tlfHandler into the user changed handler group so we can keep identify info
 	// fresh
 	d.G().AddUserChangedHandler(chat.NewIdentifyChangedHandler(d.G(), tlf))

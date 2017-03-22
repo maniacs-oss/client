@@ -422,8 +422,7 @@ type HybridInboxSource struct {
 	utils.DebugLabeler
 	*baseInboxSource
 
-	syncer  *Syncer
-	srvVers *storage.ServerVersions
+	syncer *Syncer
 }
 
 func NewHybridInboxSource(g *libkb.GlobalContext,
@@ -435,7 +434,6 @@ func NewHybridInboxSource(g *libkb.GlobalContext,
 		DebugLabeler:    utils.NewDebugLabeler(g, "HybridInboxSource", false),
 		baseInboxSource: newBaseInboxSource(g, getChatInterface, tlfInfoSource),
 		syncer:          NewSyncer(g),
-		srvVers:         storage.NewServerVersions(g),
 	}
 }
 
@@ -520,7 +518,7 @@ func (s *HybridInboxSource) ReadUnverified(ctx context.Context, uid gregor1.UID,
 
 	var inbox chat1.Inbox
 	var cerr storage.Error
-	inboxStore := storage.NewInbox(s.G(), uid, s.srvVers)
+	inboxStore := storage.NewInbox(s.G(), uid)
 
 	// Try local storage (if enabled)
 	if useLocalData {
@@ -585,7 +583,7 @@ func (s *HybridInboxSource) handleInboxError(ctx context.Context, err storage.Er
 func (s *HybridInboxSource) NewConversation(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
 	conv chat1.Conversation) (err error) {
 	defer s.Trace(ctx, func() error { return err }, "NewConversation")()
-	if cerr := storage.NewInbox(s.G(), uid, s.srvVers).NewConversation(ctx, vers, conv); cerr != nil {
+	if cerr := storage.NewInbox(s.G(), uid).NewConversation(ctx, vers, conv); cerr != nil {
 		err = s.handleInboxError(ctx, cerr, uid)
 		return err
 	}
@@ -614,7 +612,7 @@ func (s *HybridInboxSource) getConvLocal(ctx context.Context, uid gregor1.UID,
 func (s *HybridInboxSource) NewMessage(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
 	convID chat1.ConversationID, msg chat1.MessageBoxed) (conv *chat1.ConversationLocal, err error) {
 	defer s.Trace(ctx, func() error { return err }, "NewMessage")()
-	if cerr := storage.NewInbox(s.G(), uid, s.srvVers).NewMessage(ctx, vers, convID, msg); cerr != nil {
+	if cerr := storage.NewInbox(s.G(), uid).NewMessage(ctx, vers, convID, msg); cerr != nil {
 		err = s.handleInboxError(ctx, cerr, uid)
 		return nil, err
 	}
@@ -628,7 +626,7 @@ func (s *HybridInboxSource) NewMessage(ctx context.Context, uid gregor1.UID, ver
 func (s *HybridInboxSource) ReadMessage(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
 	convID chat1.ConversationID, msgID chat1.MessageID) (conv *chat1.ConversationLocal, err error) {
 	defer s.Trace(ctx, func() error { return err }, "ReadMessage")()
-	if cerr := storage.NewInbox(s.G(), uid, s.srvVers).ReadMessage(ctx, vers, convID, msgID); cerr != nil {
+	if cerr := storage.NewInbox(s.G(), uid).ReadMessage(ctx, vers, convID, msgID); cerr != nil {
 		err = s.handleInboxError(ctx, cerr, uid)
 		return nil, err
 	}
@@ -643,7 +641,7 @@ func (s *HybridInboxSource) ReadMessage(ctx context.Context, uid gregor1.UID, ve
 func (s *HybridInboxSource) SetStatus(ctx context.Context, uid gregor1.UID, vers chat1.InboxVers,
 	convID chat1.ConversationID, status chat1.ConversationStatus) (conv *chat1.ConversationLocal, err error) {
 	defer s.Trace(ctx, func() error { return err }, "SetStatus")()
-	if cerr := storage.NewInbox(s.G(), uid, s.srvVers).SetStatus(ctx, vers, convID, status); cerr != nil {
+	if cerr := storage.NewInbox(s.G(), uid).SetStatus(ctx, vers, convID, status); cerr != nil {
 		err = s.handleInboxError(ctx, cerr, uid)
 		return nil, err
 	}
@@ -658,7 +656,7 @@ func (s *HybridInboxSource) TlfFinalize(ctx context.Context, uid gregor1.UID, ve
 	convIDs []chat1.ConversationID, finalizeInfo chat1.ConversationFinalizeInfo) (convs []chat1.ConversationLocal, err error) {
 	defer s.Trace(ctx, func() error { return err }, "TlfFinalize")()
 
-	if cerr := storage.NewInbox(s.G(), uid, s.srvVers).TlfFinalize(ctx, vers, convIDs, finalizeInfo); cerr != nil {
+	if cerr := storage.NewInbox(s.G(), uid).TlfFinalize(ctx, vers, convIDs, finalizeInfo); cerr != nil {
 		err = s.handleInboxError(ctx, cerr, uid)
 		return convs, err
 	}

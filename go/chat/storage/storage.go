@@ -44,7 +44,7 @@ type storageEngine interface {
 func New(g *libkb.GlobalContext) *Storage {
 	return &Storage{
 		Contextified: libkb.NewContextified(g),
-		engine:       newBlockEngine(g, NewServerVersions(g)),
+		engine:       newBlockEngine(g),
 		idtracker:    newMsgIDTracker(g),
 		breakTracker: newBreakTracker(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Storage", false),
