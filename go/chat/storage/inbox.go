@@ -135,13 +135,18 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 		}, nil
 	}
 
-	// Set server version
-	ibox.ServerVersion = srvVers
-
 	return ibox, nil
 }
 
 func (i *Inbox) writeDiskInbox(ctx context.Context, ibox inboxDiskData) Error {
+
+	// Get latest server version
+	vers, err := i.G().ServerCacheVersions.Fetch(ctx)
+	if err != nil {
+		return NewInternalError(ctx, i.DebugLabeler, "failed to fetch server versions: %s", err.Error())
+	}
+
+	ibox.ServerVersion = vers.InboxVers
 	ibox.Version = inboxVersion
 	if ierr := i.writeDiskBox(ctx, i.dbKey(), ibox); ierr != nil {
 		return NewInternalError(ctx, i.DebugLabeler, "failed to write inbox: uid: %s err: %s",
