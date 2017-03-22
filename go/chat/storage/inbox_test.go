@@ -16,13 +16,11 @@ import (
 
 func setupInboxTest(t testing.TB, name string) (libkb.TestContext, *Inbox, gregor1.UID) {
 	tc := externals.SetupTest(t, name, 2)
+	tc.G.ServerCacheVersions = NewServerVersions(tc.G)
 	u, err := kbtest.CreateAndSignupFakeUser("ib", tc.G)
 	require.NoError(t, err)
-	f := func() libkb.SecretUI {
-		return &libkb.TestSecretUI{Passphrase: u.Passphrase}
-	}
 	uid := gregor1.UID(u.User.GetUID().ToBytes())
-	return tc, NewInbox(tc.G, uid, f), uid
+	return tc, NewInbox(tc.G, uid), uid
 }
 
 func makeTlfID() chat1.TLFID {

@@ -19,11 +19,9 @@ import (
 func setupStorageTest(t testing.TB, name string) (libkb.TestContext, *Storage, gregor1.UID) {
 	tc := externals.SetupTest(t, name, 2)
 	u, err := kbtest.CreateAndSignupFakeUser("cs", tc.G)
+	tc.G.ServerCacheVersions = NewServerVersions(tc.G)
 	require.NoError(t, err)
-	f := func() libkb.SecretUI {
-		return &libkb.TestSecretUI{Passphrase: u.Passphrase}
-	}
-	return tc, New(tc.G, f), gregor1.UID(u.User.GetUID().ToBytes())
+	return tc, New(tc.G), gregor1.UID(u.User.GetUID().ToBytes())
 }
 
 func randBytes(n int) []byte {
