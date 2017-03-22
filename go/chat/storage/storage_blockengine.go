@@ -68,7 +68,7 @@ func (be *blockEngine) getMsgID(blockNum, blockPos int) chat1.MessageID {
 func (be *blockEngine) createBlockIndex(ctx context.Context, key libkb.DbKey,
 	convID chat1.ConversationID, uid gregor1.UID) (blockIndex, Error) {
 
-	be.Debug(ctx, "createBlockIndex: creating new block index: convID: %d uid: %s", convID, uid)
+	be.Debug(ctx, "createBlockIndex: creating new block index: convID: %s uid: %s", convID, uid)
 
 	// Grab latest server version to tag local data with
 	srvVers, serr := be.G().ServerCacheVersions.Fetch(ctx)
@@ -125,7 +125,7 @@ func (be *blockEngine) readBlockIndex(ctx context.Context, convID chat1.Conversa
 
 	// Check server version
 	if _, err = be.G().ServerCacheVersions.MatchBodies(ctx, bi.ServerVersion); err != nil {
-		be.Debug(ctx, "readBlockInbox: server version error: %s, creating new index")
+		be.Debug(ctx, "readBlockInbox: server version error: %s, creating new index", err.Error())
 		return be.createBlockIndex(ctx, key, convID, uid)
 	}
 
