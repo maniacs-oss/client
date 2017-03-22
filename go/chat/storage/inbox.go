@@ -79,8 +79,7 @@ type Inbox struct {
 	*baseBox
 	utils.DebugLabeler
 
-	srvVers *ServerVersions
-	uid     gregor1.UID
+	uid gregor1.UID
 }
 
 func NewInbox(g *libkb.GlobalContext, uid gregor1.UID) *Inbox {
@@ -112,7 +111,7 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 
 	// Check on disk server version against known server version
 	var srvVers int
-	if srvVers, err = i.srvVers.MatchInbox(ctx, ibox.ServerVersion); err != nil {
+	if srvVers, err = i.G().ServerCacheVersions.MatchInbox(ctx, ibox.ServerVersion); err != nil {
 		i.Debug(ctx, "server version match error, clearing: %s", err.Error())
 		if cerr := i.Clear(ctx); cerr != nil {
 			return ibox, cerr
