@@ -77,7 +77,7 @@ type InboxSource interface {
 }
 
 type ServerCacheVersions interface {
-	Sync(ctx context.Context, vers chat1.ServerCacheVers) error
+	Sync(ctx context.Context, vers chat1.ServerCacheVers) (bool, error)
 	MatchBodies(ctx context.Context, vers int) (int, error)
 	MatchInbox(ctx context.Context, vers int) (int, error)
 	Fetch(ctx context.Context) (chat1.ServerCacheVers, error)

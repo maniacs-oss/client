@@ -560,3 +560,35 @@ func TestInboxSync(t *testing.T) {
 	require.Equal(t, chat1.ConversationStatus_UNFILED, newRes[3].Metadata.Status)
 	require.Equal(t, len(res), len(newRes))
 }
+
+func TestInboxServerVersion(t *testing.T) {
+	tc, inbox, _ := setupInboxTest(t, "basic")
+
+	// Create an inbox with a bunch of convos, merge it and read it back out
+	numConvs := 10
+	var convs []chat1.Conversation
+	for i := numConvs - 1; i >= 0; i-- {
+		convs = append(convs, makeConvo(gregor1.Time(i), 1, 1))
+	}
+
+	require.NoError(t, inbox.Merge(context.TODO(), 1, convs, nil, nil))
+	_, res, _, err := inbox.Read(context.TODO(), nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, numConvs, len(res))
+
+	// Increase server version
+	diff, cerr := tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+		InboxVers: 5,
+	})
+	require.NoError(t, cerr)
+	require.True(t, diff)
+
+	_, res, _, err = inbox.Read(context.TODO(), nil, nil)
+	require.Error(t, err)
+	require.IsType(t, MissError{}, err)
+
+	require.NoError(t, inbox.Merge(context.TODO(), 1, convs, nil, nil))
+	idata, err := inbox.readDiskInbox(context.TODO())
+	require.NoError(t, err)
+	require.Equal(t, 5, idata.ServerVersion)
+}

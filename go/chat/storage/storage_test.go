@@ -464,6 +464,32 @@ func TestStorageFetchMessages(t *testing.T) {
 	require.Equal(t, 1, nils, "wrong number of nils")
 }
 
+func TestStorageServerVersion(t *testing.T) {
+	tc, storage, uid := setupStorageTest(t, "serverVersion")
+
+	msgs := makeMsgRange(300)
+	conv := makeConversation(msgs[0].GetMessageID())
+	require.NoError(t, storage.Merge(context.TODO(), conv.Metadata.ConversationID, uid, msgs))
+	res, err := storage.Fetch(context.TODO(), conv, uid, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, len(msgs), len(res.Messages))
+
+	diff, cerr := tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+		BodiesVers: 5,
+	})
+	require.NoError(t, cerr)
+	require.True(t, diff)
+
+	res, err = storage.Fetch(context.TODO(), conv, uid, nil, nil)
+	require.Error(t, err)
+	require.IsType(t, MissError{}, err)
+
+	require.NoError(t, storage.Merge(context.TODO(), conv.Metadata.ConversationID, uid, msgs))
+	res, err = storage.Fetch(context.TODO(), conv, uid, nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, len(msgs), len(res.Messages))
+}
+
 func TestStorageDetectBodyHashReplay(t *testing.T) {
 	tc, _, _ := setupStorageTest(t, "fetchMessages")
 
