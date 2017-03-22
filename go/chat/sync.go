@@ -73,7 +73,7 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	}
 
 	// If the server versions are different, then all our caches will self clear, let's just
-	// let outsiders know everythign should get reloaded.
+	// let outsiders know everything should get reloaded.
 	if srvVersDiff {
 		s.Debug(ctx, "Connected: server cache version detected, sending full clear")
 		s.SendChatStaleNotifications(uid, nil)
