@@ -474,11 +474,10 @@ func TestStorageServerVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, len(msgs), len(res.Messages))
 
-	diff, cerr := tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+	cerr := tc.G.ServerCacheVersions.Set(context.TODO(), chat1.ServerCacheVers{
 		BodiesVers: 5,
 	})
 	require.NoError(t, cerr)
-	require.True(t, diff)
 
 	res, err = storage.Fetch(context.TODO(), conv, uid, nil, nil)
 	require.Error(t, err)

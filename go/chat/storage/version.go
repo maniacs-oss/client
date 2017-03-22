@@ -91,20 +91,9 @@ func (s *ServerVersions) MatchBodies(ctx context.Context, vers int) (int, error)
 	return s.matchLocked(ctx, vers, func(srvVers chat1.ServerCacheVers) int { return srvVers.BodiesVers })
 }
 
-func (s *ServerVersions) Sync(ctx context.Context, vers chat1.ServerCacheVers) (diff bool, err error) {
+func (s *ServerVersions) Set(ctx context.Context, vers chat1.ServerCacheVers) (err error) {
 	locks.Version.Lock()
 	defer locks.Version.Unlock()
-
-	// Fetch old one to see if there is any difference
-	diff = true
-	oldVers, err := s.fetchLocked(ctx)
-	if err != nil {
-		s.Debug(ctx, "Sync: failed to get old version: %s", err.Error())
-		return diff, err
-	}
-	if oldVers.BodiesVers == vers.BodiesVers && oldVers.InboxVers == vers.InboxVers {
-		diff = false
-	}
 
 	// Write in memory
 	s.cached = &vers
@@ -113,12 +102,12 @@ func (s *ServerVersions) Sync(ctx context.Context, vers chat1.ServerCacheVers) (
 	dat, err := encode(vers)
 	if err != nil {
 		s.Debug(ctx, "Sync: failed to encode: %s", err.Error())
-		return diff, err
+		return err
 	}
 	if err = s.G().LocalChatDb.PutRaw(s.makeKey(), dat); err != nil {
 		s.Debug(ctx, "Sync: failed to write: %s", err.Error())
-		return diff, err
+		return err
 	}
 
-	return diff, nil
+	return nil
 }

@@ -110,16 +110,12 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 	}
 
 	// Check on disk server version against known server version
-	var srvVers int
-	if srvVers, err = i.G().ServerCacheVersions.MatchInbox(ctx, ibox.ServerVersion); err != nil {
+	if _, err = i.G().ServerCacheVersions.MatchInbox(ctx, ibox.ServerVersion); err != nil {
 		i.Debug(ctx, "server version match error, clearing: %s", err.Error())
 		if cerr := i.Clear(ctx); cerr != nil {
 			return ibox, cerr
 		}
-		return inboxDiskData{
-			Version:       inboxVersion,
-			ServerVersion: srvVers,
-		}, nil
+		return ibox, MissError{}
 	}
 	// Check on disk version against configured
 	if ibox.Version != inboxVersion {
@@ -128,10 +124,7 @@ func (i *Inbox) readDiskInbox(ctx context.Context) (inboxDiskData, Error) {
 		if cerr := i.Clear(ctx); cerr != nil {
 			return ibox, cerr
 		}
-		return inboxDiskData{
-			Version:       inboxVersion,
-			ServerVersion: srvVers,
-		}, nil
+		return ibox, MissError{}
 	}
 
 	return ibox, nil
@@ -837,13 +830,24 @@ func (i *Inbox) Version(ctx context.Context) (vers chat1.InboxVers, err Error) {
 
 	ibox, err := i.readDiskInbox(ctx)
 	if err != nil {
-		if _, ok := err.(MissError); !ok {
-			return 0, err
-		}
-		return 0, nil
+		return 0, err
 	}
 
 	vers = chat1.InboxVers(ibox.InboxVersion)
+	return vers, nil
+}
+
+func (i *Inbox) ServerVersion(ctx context.Context) (vers int, err Error) {
+	locks.Inbox.Lock()
+	defer locks.Inbox.Unlock()
+	defer i.maybeNukeFn(func() Error { return err }, i.dbKey())
+
+	ibox, err := i.readDiskInbox(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	vers = ibox.ServerVersion
 	return vers, nil
 }
 
@@ -854,10 +858,8 @@ func (i *Inbox) Sync(ctx context.Context, vers chat1.InboxVers, convs []chat1.Co
 
 	ibox, err := i.readDiskInbox(ctx)
 	if err != nil {
-		if _, ok := err.(MissError); !ok {
-			return err
-		}
-		return nil
+		// Return MissError, since it should be unexpected if are calling this
+		return err
 	}
 
 	// Sync inbox with new conversations if we know about them already

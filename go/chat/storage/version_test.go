@@ -13,24 +13,22 @@ func TestServerVersionSync(t *testing.T) {
 	tc := externals.SetupTest(t, "version", 2)
 	tc.G.ServerCacheVersions = NewServerVersions(tc.G)
 
-	diff, err := tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+	err := tc.G.ServerCacheVersions.Set(context.TODO(), chat1.ServerCacheVers{
 		InboxVers:  10,
 		BodiesVers: 5,
 	})
 	require.NoError(t, err)
-	require.True(t, diff)
 
 	res, err := tc.G.ServerCacheVersions.Fetch(context.TODO())
 	require.NoError(t, err)
 	require.Equal(t, 10, res.InboxVers)
 	require.Equal(t, 5, res.BodiesVers)
 
-	diff, err = tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+	err = tc.G.ServerCacheVersions.Set(context.TODO(), chat1.ServerCacheVers{
 		InboxVers:  10,
 		BodiesVers: 5,
 	})
 	require.NoError(t, err)
-	require.False(t, diff)
 
 	vers, err := tc.G.ServerCacheVersions.MatchInbox(context.TODO(), 10)
 	require.NoError(t, err)

@@ -577,11 +577,10 @@ func TestInboxServerVersion(t *testing.T) {
 	require.Equal(t, numConvs, len(res))
 
 	// Increase server version
-	diff, cerr := tc.G.ServerCacheVersions.Sync(context.TODO(), chat1.ServerCacheVers{
+	cerr := tc.G.ServerCacheVersions.Set(context.TODO(), chat1.ServerCacheVers{
 		InboxVers: 5,
 	})
 	require.NoError(t, cerr)
-	require.True(t, diff)
 
 	_, res, _, err = inbox.Read(context.TODO(), nil, nil)
 	require.Error(t, err)

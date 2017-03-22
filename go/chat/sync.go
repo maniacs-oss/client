@@ -17,14 +17,12 @@ type Syncer struct {
 	utils.DebugLabeler
 
 	offlinables []types.Offlinable
-	srvVers     *storage.ServerVersions
 }
 
 func NewSyncer(g *libkb.GlobalContext) *Syncer {
 	return &Syncer{
 		Contextified: libkb.NewContextified(g),
 		DebugLabeler: utils.NewDebugLabeler(g, "Syncer", false),
-		srvVers:      storage.NewServerVersions(g),
 	}
 }
 
@@ -39,6 +37,21 @@ func (s *Syncer) SendChatStaleNotifications(uid gregor1.UID, convs []chat1.Conve
 	kuid := keybase1.UID(uid.String())
 	s.G().NotifyRouter.HandleChatInboxStale(context.Background(), kuid)
 	s.G().NotifyRouter.HandleChatThreadsStale(context.Background(), kuid, s.getConvIDs(convs))
+}
+
+func (s *Syncer) isServerInboxClear(ctx context.Context, inbox *storage.Inbox) bool {
+	iboxSrvVers, err := inbox.ServerVersion(ctx)
+	if err != nil {
+		s.Debug(ctx, "isServerInboxClear: failed to get server version: %s", err.Error())
+		return true
+	}
+
+	if _, err := s.G().ServerCacheVersions.MatchInbox(ctx, iboxSrvVers); err != nil {
+		s.Debug(ctx, "isServerInboxClear: inbox server version match error: %s", err.Error())
+		return true
+	}
+
+	return false
 }
 
 func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid gregor1.UID) (err error) {
@@ -67,47 +80,45 @@ func (s *Syncer) Connected(ctx context.Context, cli chat1.RemoteInterface, uid g
 	}
 
 	// Set new server versions
-	var srvVersDiff bool
-	if srvVersDiff, err = s.srvVers.Sync(ctx, syncRes.CacheVers); err != nil {
+	if err = s.G().ServerCacheVersions.Set(ctx, syncRes.CacheVers); err != nil {
 		s.Debug(ctx, "Connected: failed to set new server versions: %s", err.Error())
 	}
 
-	// If the server versions are different, then all our caches will self clear, let's just
-	// let outsiders know everything should get reloaded.
-	if srvVersDiff {
-		s.Debug(ctx, "Connected: server cache version detected, sending full clear")
-		s.SendChatStaleNotifications(uid, nil)
-	} else {
-		// Process what the server has told us to do with the local inbox copy
-		rtyp, err := syncRes.InboxRes.Typ()
-		if err != nil {
-			s.Debug(ctx, "Connected: strange type from SyncInbox: %s", err.Error())
-			return err
+	// Process what the server has told us to do with the local inbox copy
+	rtyp, err := syncRes.InboxRes.Typ()
+	if err != nil {
+		s.Debug(ctx, "Connected: strange type from SyncInbox: %s", err.Error())
+		return err
+	}
+	// Check if the server has cleared the inbox
+	if s.isServerInboxClear(ctx, ibox) {
+		rtyp = chat1.SyncInboxResType_CLEAR
+	}
+
+	switch rtyp {
+	case chat1.SyncInboxResType_CLEAR:
+		s.Debug(ctx, "Connected: version out of date, clearing inbox: %v", vers)
+		if err = ibox.Clear(ctx); err != nil {
+			s.Debug(ctx, "Connected: failed to clear inbox: %s", err.Error())
 		}
-		switch rtyp {
-		case chat1.SyncInboxResType_CLEAR:
-			s.Debug(ctx, "Connected: version out of date, clearing inbox: %v", vers)
-			if err = ibox.Clear(ctx); err != nil {
-				s.Debug(ctx, "Connected: failed to clear inbox: %s", err.Error())
-			}
+		// Send notifications for a full clear
+		s.SendChatStaleNotifications(uid, nil)
+	case chat1.SyncInboxResType_CURRENT:
+		s.Debug(ctx, "Connected: version is current, standing pat: %v", vers)
+		// Run sync with a blank list in case server version has changed
+	case chat1.SyncInboxResType_INCREMENTAL:
+		incr := syncRes.InboxRes.Incremental()
+		s.Debug(ctx, "Connected: version out of date, but can incrementally sync: old vers: %v vers: %v convs: %d",
+			vers, incr.Vers, len(incr.Convs))
+
+		if err = ibox.Sync(ctx, incr.Vers, incr.Convs); err != nil {
+			s.Debug(ctx, "Connected: failed to sync conversations to inbox: %s", err.Error())
+
 			// Send notifications for a full clear
 			s.SendChatStaleNotifications(uid, nil)
-		case chat1.SyncInboxResType_CURRENT:
-			s.Debug(ctx, "Connected: version is current, standing pat: %v", vers)
-		case chat1.SyncInboxResType_INCREMENTAL:
-			incr := syncRes.InboxRes.Incremental()
-			s.Debug(ctx, "Connected: version out of date, but can incrementally sync: old vers: %v vers: %v convs: %d",
-				vers, incr.Vers, len(incr.Convs))
-
-			if err = ibox.Sync(ctx, incr.Vers, incr.Convs); err != nil {
-				s.Debug(ctx, "Connected: failed to sync conversations to inbox: %s", err.Error())
-
-				// Send notifications for a full clear
-				s.SendChatStaleNotifications(uid, nil)
-			} else {
-				// Send notifications for a successful partial sync
-				s.SendChatStaleNotifications(uid, incr.Convs)
-			}
+		} else {
+			// Send notifications for a successful partial sync
+			s.SendChatStaleNotifications(uid, incr.Convs)
 		}
 	}
 
